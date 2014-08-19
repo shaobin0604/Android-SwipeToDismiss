@@ -96,7 +96,9 @@ public class SwipeDismissListViewTouchListener implements View.OnTouchListener {
     private int mSwipingSlop;
     private VelocityTracker mVelocityTracker;
     private int mDownPosition;
-    private View mDownView;
+    private int mSwipingLayout;
+    private View mSwipeDownView;
+    private View mSwipeDownChild;
     private boolean mPaused;
 
     private final Object mAnimationLock = new Object();
@@ -149,6 +151,23 @@ public class SwipeDismissListViewTouchListener implements View.OnTouchListener {
     }
 
     /**
+     * Sets the id of the view, that should be moved, when the user swipes an item.
+     * Only the view with the specified id will move, while all other views in the list item, will
+     * stay where they are. This might be usefull to have a background behind the view that is swiped
+     * out, to stay where it is (and maybe explain that the item is going to be deleted).
+     * If you never call this method (or call it with 0), the whole view will be swiped. Also if there
+     * is no view in a list item, with the given id, the whole view will be swiped.
+     * <p>
+     * <b>Note:</b> This method requires the <i>Swipe to Dismiss</i> feature enabled. Use
+     * {@link #enableSwipeToDismiss()} to enable the feature.
+     *
+     * @param swipingLayoutId The id (from R.id) of the view, that should be swiped.
+     */
+    public void setSwipingLayout(int swipingLayoutId) {
+        mSwipingLayout = swipingLayoutId;
+    }
+
+    /**
      * Returns an {@link AbsListView.OnScrollListener} to be added to the {@link
      * ListView} using {@link ListView#setOnScrollListener(AbsListView.OnScrollListener)}.
      * If a scroll listener is already assigned, the caller should still pass scroll changes through
@@ -196,20 +215,29 @@ public class SwipeDismissListViewTouchListener implements View.OnTouchListener {
                     child = mListView.getChildAt(i);
                     child.getHitRect(rect);
                     if (rect.contains(x, y)) {
-                        mDownView = child;
+                        // if a specific swiping layout has been giving, use this to swipe.
+                        if (mSwipingLayout > 0) {
+                            View swipingView = child.findViewById(mSwipingLayout);
+                            if (swipingView != null) {
+                                mSwipeDownView = swipingView;
+                                mSwipeDownChild = child;
+                                break;
+                            }
+                        }
+                        mSwipeDownView = mSwipeDownChild = child;
                         break;
                     }
                 }
 
-                if (mDownView != null) {
+                if (mSwipeDownView != null) {
                     mDownX = motionEvent.getRawX();
                     mDownY = motionEvent.getRawY();
-                    mDownPosition = mListView.getPositionForView(mDownView);
+                    mDownPosition = mListView.getPositionForView(mSwipeDownView);
                     if (mCallbacks.canDismiss(mDownPosition)) {
                         mVelocityTracker = VelocityTracker.obtain();
                         mVelocityTracker.addMovement(motionEvent);
                     } else {
-                        mDownView = null;
+                        mSwipeDownView = mSwipeDownChild = null;
                     }
                 }
                 return false;
@@ -220,9 +248,9 @@ public class SwipeDismissListViewTouchListener implements View.OnTouchListener {
                     break;
                 }
 
-                if (mDownView != null && mSwiping) {
+                if (mSwipeDownView != null && mSwiping) {
                     // cancel
-                    mDownView.animate()
+                    mSwipeDownView.animate()
                             .translationX(0)
                             .alpha(1)
                             .setDuration(mAnimationTime)
@@ -232,7 +260,8 @@ public class SwipeDismissListViewTouchListener implements View.OnTouchListener {
                 mVelocityTracker = null;
                 mDownX = 0;
                 mDownY = 0;
-                mDownView = null;
+                mSwipeDownView = null;
+                mSwipeDownChild = null;
                 mDownPosition = ListView.INVALID_POSITION;
                 mSwiping = false;
                 break;
@@ -262,7 +291,8 @@ public class SwipeDismissListViewTouchListener implements View.OnTouchListener {
                 }
                 if (dismiss && mDownPosition != ListView.INVALID_POSITION) {
                     // dismiss
-                    final View downView = mDownView; // mDownView gets null'd before animation ends
+                    final View downView = mSwipeDownView; // mDownView gets null'd before animation ends
+                    final View childView = mSwipeDownChild;
                     final int downPosition = mDownPosition;
                     synchronized (mAnimationLock) {
                         if (mAnimatedViews.contains(downView)) {
@@ -271,7 +301,7 @@ public class SwipeDismissListViewTouchListener implements View.OnTouchListener {
                         ++mDismissAnimationRefCount;
                         mAnimatedViews.add(downView);
                     }
-                    mDownView.animate()
+                    mSwipeDownView.animate()
                             .translationX(dismissRight ? mViewWidth : -mViewWidth)
                             .alpha(0)
                             .setDuration(mAnimationTime)
@@ -283,7 +313,7 @@ public class SwipeDismissListViewTouchListener implements View.OnTouchListener {
                             });
                 } else {
                     // cancel
-                    mDownView.animate()
+                    mSwipeDownView.animate()
                             .translationX(0)
                             .alpha(1)
                             .setDuration(mAnimationTime)
@@ -293,7 +323,8 @@ public class SwipeDismissListViewTouchListener implements View.OnTouchListener {
                 mVelocityTracker = null;
                 mDownX = 0;
                 mDownY = 0;
-                mDownView = null;
+                mSwipeDownView = null;
+                mSwipeDownChild = null;
                 mDownPosition = ListView.INVALID_POSITION;
                 mSwiping = false;
                 break;
@@ -322,8 +353,8 @@ public class SwipeDismissListViewTouchListener implements View.OnTouchListener {
                 }
 
                 if (mSwiping) {
-                    mDownView.setTranslationX(deltaX - mSwipingSlop);
-                    mDownView.setAlpha(Math.max(0f, Math.min(1f,
+                    mSwipeDownView.setTranslationX(deltaX - mSwipingSlop);
+                    mSwipeDownView.setAlpha(Math.max(0f, Math.min(1f,
                             1f - 2f * Math.abs(deltaX) / mViewWidth)));
                     return true;
                 }
